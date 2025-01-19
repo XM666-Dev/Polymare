@@ -18,9 +18,9 @@ function add_polymorphed_player(player, max_hp, money, inventory_quick, inventor
 
     local damage_model = EntityGetFirstComponent(player, "DamageModelComponent")
     if damage_model ~= nil then
-        local base = get_max_hp_base()
+        local base = tonumber(GlobalsGetValue("polymare.max_hp_base")) or 0
         local base_new = math.max(ComponentGetValue2(damage_model, "max_hp"), base)
-        GlobalsSetValue("polymare.max_hp_base", tostring(base_new))
+        GlobalsSetValue("polymare.max_hp_base", ("%.16a"):format(base_new))
         local max_hp_new = base_new + max_hp - base
         ComponentSetValue2(damage_model, "max_hp", max_hp_new)
         ComponentSetValue2(damage_model, "hp", max_hp_new)
@@ -93,10 +93,6 @@ function load_illusion(x, y)
     GamePlaySound("data/audio/Desktop/animals.bank", "animals/illusion/create", x, y)
 end
 
-function get_max_hp_base()
-    return tonumber(GlobalsGetValue("polymare.max_hp_base", "0"))
-end
-
 function get_money(entity)
     local wallet = EntityGetFirstComponent(entity, "WalletComponent")
     if wallet ~= nil then
@@ -111,12 +107,6 @@ function OnPlayerSpawned(player)
     local money = get_money(player)
     local polymorphed_player = polymorph(player, "data/entities/animals/longleg.xml")
     add_polymorphed_player(polymorphed_player, ModSettingGet("polymare.extra_health"), money, nil, EntityCreateNew("inventory_full"))
-end
-
-function get_closest(a, b)
-    local a_x, a_y = EntityGetTransform(a)
-    local b_x, b_y = EntityGetTransform(b)
-    return get_distance2(a_x, a_y, x, y) < get_distance2(b_x, b_y, x, y)
 end
 
 local sprite_xmls = {}
@@ -178,10 +168,21 @@ function OnWorldPreUpdate()
     end
 
     local x, y = EntityGetTransform(player)
-    local polymorph_table = PolymorphTableGet()
-    local polymorph_table_rare = PolymorphTableGet(true)
     local player_filename = EntityGetFilename(player)
     local player_damage_model = EntityGetFirstComponent(player, "DamageModelComponent")
+    local polymorph_table = PolymorphTableGet()
+    local polymorph_table_rare = PolymorphTableGet(true)
+
+    local function get_weight(entity)
+        local damage_model = EntityGetFirstComponent(entity, "DamageModelComponent")
+        return damage_model and ComponentGetValue2(damage_model, "hp") + ComponentGetValue2(damage_model, "max_hp") or 0
+    end
+    local function get_closest(a, b)
+        local a_x, a_y = EntityGetTransform(a)
+        local b_x, b_y = EntityGetTransform(b)
+        return get_distance2(a_x, a_y, x, y) < get_distance2(b_x, b_y, x, y)
+    end
+
     local enemies = table.filter(EntityGetInRadiusWithTag(x, y, 32, "mortal"), function(v)
         local filename = EntityGetFilename(v)
         if not filename:find("^data") and not filename:find("^mods") or filename == player_filename then return false end
@@ -200,13 +201,9 @@ function OnWorldPreUpdate()
         end
         return find
     end)
+    local player_weight = get_weight(player) * (2 + GameGetOrbCountThisRun() * 0.5)
     local enemy = table.iterate(table.filter(enemies, function(v)
-        local cap
-        local damage_model = EntityGetFirstComponent(v, "DamageModelComponent")
-        if damage_model ~= nil then
-            cap = (ComponentGetValue2(damage_model, "hp") + ComponentGetValue2(damage_model, "max_hp")) * 0.25
-        end
-        return not ModSettingGet("polymare.polymorph_cap") or cap ~= nil and player_damage_model ~= nil and cap <= ComponentGetValue2(player_damage_model, "max_hp")
+        return not ModSettingGet("polymare.polymorph_cap") or get_weight(v) <= player_weight
     end), get_closest)
     if read_input_just(tostring(ModSettingGet("polymare.polymorph_key"))) then
         if enemy == nil then
@@ -215,8 +212,8 @@ function OnWorldPreUpdate()
                 load_illusion(x, y)
                 load_illusion(EntityGetTransform(enemy))
             end
-        elseif player_damage_model ~= nil then
-            local max_hp = ComponentGetValue2(player_damage_model, "max_hp")
+        else
+            local max_hp = player_damage_model ~= nil and ComponentGetValue2(player_damage_model, "max_hp") or 0
             local money = get_money(player)
             local inventory_quick = table.find(EntityGetAllChildren(player), function(child) return EntityGetName(child) == "inventory_quick" end)
             local inventory_full = table.find(EntityGetAllChildren(player), function(child) return EntityGetName(child) == "inventory_full" end)

@@ -1,6 +1,4 @@
-dofile_once("mods/better_polymorph/files/utilities.lua")
-
-function _G.perk_pickup(entity_item, entity_who_picked, item_name, do_cosmetic_fx, kill_other_perks, no_perk_entity_)
+function perk_pickup(entity_item, entity_who_picked, item_name, do_cosmetic_fx, kill_other_perks, no_perk_entity_)
     -- fetch perk info ---------------------------------------------------
 
     local no_perk_entity = no_perk_entity_ or false
