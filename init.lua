@@ -76,7 +76,10 @@ function add_polymorphed_player(player, max_hp, money, inventory_quick, inventor
     if inventory_quick ~= nil then
         EntityAddChild(player, inventory_quick)
     end
-    EntityAddChild(player, inventory_full)
+    if inventory_full ~= nil then
+        EntityAddChild(player, inventory_full)
+    end
+
     EntityAddComponent2(player, "AudioListenerComponent")
 end
 
