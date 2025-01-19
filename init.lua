@@ -163,8 +163,8 @@ function OnWorldPreUpdate()
         if inventory_quick == nil then
             entity = table.iterate(table.filter(EntityGetInRadius(0, 0, math.huge), function(v)
                 local item = EntityGetFirstComponent(v, "ItemComponent")
-                return item ~= nil and ComponentGetValue2(item, "preferred_inventory") ~= "QUICK"
-            end), is_closer)
+                return item ~= nil and ComponentGetValue2(item, "preferred_inventory") ~= "QUICK" and ComponentGetValue2(item, "auto_pickup")
+            end), is_closer) or 1
         end
         local pick_upper = EntityGetFirstComponent(player, "ItemPickUpperComponent")
         if pick_upper ~= nil then
