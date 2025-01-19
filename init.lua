@@ -115,6 +115,22 @@ function OnWorldPreUpdate()
     local player = EntityGetWithTag("polymorphed_player")[1] or EntityGetWithTag("player_unit")[1]
     if player == nil then return end
 
+    local x, y = EntityGetTransform(player)
+    local player_filename = EntityGetFilename(player)
+    local player_damage_model = EntityGetFirstComponent(player, "DamageModelComponent")
+    local polymorph_table = PolymorphTableGet()
+    local polymorph_table_rare = PolymorphTableGet(true)
+
+    local function get_weight(entity)
+        local damage_model = EntityGetFirstComponent(entity, "DamageModelComponent")
+        return damage_model and ComponentGetValue2(damage_model, "hp") + ComponentGetValue2(damage_model, "max_hp") or 0
+    end
+    local function is_closer(a, b)
+        local a_x, a_y = EntityGetTransform(a)
+        local b_x, b_y = EntityGetTransform(b)
+        return get_distance2(a_x, a_y, x, y) < get_distance2(b_x, b_y, x, y)
+    end
+
     local controls = EntityGetFirstComponent(player, "ControlsComponent")
     local sprite = EntityGetFirstComponent(player, "SpriteComponent")
     if controls ~= nil and sprite ~= nil then
@@ -142,14 +158,17 @@ function OnWorldPreUpdate()
             end
         end
 
+        local entity = 0
         local inventory_quick = table.find(EntityGetAllChildren(player), function(child) return EntityGetName(child) == "inventory_quick" end)
         if inventory_quick == nil then
-            for i, entity in ipairs(EntityGetInRadius(0, 0, math.huge)) do
-                local item = EntityGetFirstComponent(entity, "ItemComponent")
-                if item ~= nil and ComponentGetValue2(item, "preferred_inventory") == "QUICK" then
-                    ComponentSetValue2(item, "next_frame_pickable", frame + 1)
-                end
-            end
+            entity = table.iterate(table.filter(EntityGetInRadius(0, 0, math.huge), function(v)
+                local item = EntityGetFirstComponent(v, "ItemComponent")
+                return item ~= nil and ComponentGetValue2(item, "preferred_inventory") ~= "QUICK"
+            end), is_closer)
+        end
+        local pick_upper = EntityGetFirstComponent(player, "ItemPickUpperComponent")
+        if pick_upper ~= nil then
+            ComponentSetValue2(pick_upper, "only_pick_this_entity", entity)
         end
 
         local frame_wait
@@ -165,22 +184,6 @@ function OnWorldPreUpdate()
             ComponentSetValue2(controls, "mButtonFrameKick", frame + ComponentGetValue2(ai, "attack_melee_action_frame") * frame_wait * 60 - 18)
             GamePlayAnimation(player, "attack", 2)
         end
-    end
-
-    local x, y = EntityGetTransform(player)
-    local player_filename = EntityGetFilename(player)
-    local player_damage_model = EntityGetFirstComponent(player, "DamageModelComponent")
-    local polymorph_table = PolymorphTableGet()
-    local polymorph_table_rare = PolymorphTableGet(true)
-
-    local function get_weight(entity)
-        local damage_model = EntityGetFirstComponent(entity, "DamageModelComponent")
-        return damage_model and ComponentGetValue2(damage_model, "hp") + ComponentGetValue2(damage_model, "max_hp") or 0
-    end
-    local function get_closest(a, b)
-        local a_x, a_y = EntityGetTransform(a)
-        local b_x, b_y = EntityGetTransform(b)
-        return get_distance2(a_x, a_y, x, y) < get_distance2(b_x, b_y, x, y)
     end
 
     local enemies = table.filter(EntityGetInRadiusWithTag(x, y, 32, "mortal"), function(v)
@@ -204,10 +207,10 @@ function OnWorldPreUpdate()
     local player_weight = get_weight(player) * (2 + GameGetOrbCountThisRun() * 0.5)
     local enemy = table.iterate(table.filter(enemies, function(v)
         return not ModSettingGet("polymare.polymorph_cap") or get_weight(v) <= player_weight
-    end), get_closest)
+    end), is_closer)
     if read_input_just(tostring(ModSettingGet("polymare.polymorph_key"))) then
         if enemy == nil then
-            enemy = table.iterate(enemies, get_closest)
+            enemy = table.iterate(enemies, is_closer)
             if enemy ~= nil then
                 load_illusion(x, y)
                 load_illusion(EntityGetTransform(enemy))
