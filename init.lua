@@ -228,6 +228,7 @@ function OnWorldPreUpdate()
                 set_component_enabled(effect, false)
             end
             EntityRemoveTag(player, "polymorphed")
+            EntityRemoveTag(player, "polymorphable_NOT")
             local filename = EntityGetFilename(enemy)
             local filename_variant = "mods/polymare/files/entities/" .. filename
             local polymorphed_player = polymorph(player, ModDoesFileExist(filename_variant) and filename_variant or filename)
