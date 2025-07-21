@@ -3,13 +3,15 @@ dofile_once("mods/polymare/files/input.lua")
 local nxml = dofile_once("mods/polymare/files/nxml.lua")
 
 ModLuaFileAppend("data/scripts/perks/perk.lua", "mods/polymare/files/perk_appends.lua")
+ModLuaFileAppend("data/scripts/animals/enlightened_alchemist_init.lua", "mods/polymare/files/ai_appends.lua")
+ModLuaFileAppend("data/scripts/animals/wizard_returner_memory.lua", "mods/polymare/files/ai_appends.lua")
 
 local ModTextFileSetContent = ModTextFileSetContent
 function polymorph(entity, target)
     local index = ModSettingGet("polymare.index") or 0
     ModSettingSet("polymare.index", index + 1)
     local xml = ("mods/polymare/files/polymorph/%i.xml"):format(index)
-    ModTextFileSetContent(xml, ('<Entity><GameEffectComponent effect="POLYMORPH"polymorph_target="%s"frames="-2147483648"/>/>'):format(target))
+    ModTextFileSetContent(xml, ('<Entity><GameEffectComponent effect="POLYMORPH"polymorph_target="%s"/>/>'):format(target))
     return LoadGameEffectEntityTo(entity, xml) + 1
 end
 
@@ -54,10 +56,10 @@ function add_polymorphed_player(player, max_hp, money, inventory_quick, inventor
             kick_damage = ComponentGetValue2(ai, "attack_melee_damage_max"),
             --kick_knockback = ComponentGetValue2(ai, "attack_knockback_multiplier") * 0.8,
         })
-        local hotspot = EntityAddComponent2(player, "HotspotComponent", { _tags = "kick_pos" })
+        local hotspot = EntityAddComponent2(player, "HotspotComponent", {_tags = "kick_pos"})
         ComponentSetValue2(hotspot, "offset", ComponentGetValue2(ai, "attack_melee_offset_x"), ComponentGetValue2(ai, "attack_melee_offset_y"))
 
-        local platform_shooter = EntityAddComponent2(player, "PlatformShooterPlayerComponent", not needs_food and { eating_delay_frames = 0x7FFFFFFF } or nil)
+        local platform_shooter = EntityAddComponent2(player, "PlatformShooterPlayerComponent", not needs_food and {eating_delay_frames = 0x7FFFFFFF} or nil)
         local eating_area_radius_x = ComponentGetValue2(ai, "eating_area_radius_x")
         local eating_area_radius_y = ComponentGetValue2(ai, "eating_area_radius_y")
         local mouth_offset_x = ComponentGetValue2(ai, "mouth_offset_x")
@@ -68,8 +70,8 @@ function add_polymorphed_player(player, max_hp, money, inventory_quick, inventor
     end
     EntityAddComponent2(player, "GunComponent")
 
-    EntityAddComponent2(player, "Inventory2Component", { full_inventory_slots_x = 16, full_inventory_slots_y = 1 })
-    EntityAddComponent2(player, "WalletComponent", { money = money })
+    EntityAddComponent2(player, "Inventory2Component", {full_inventory_slots_x = 16, full_inventory_slots_y = 1})
+    EntityAddComponent2(player, "WalletComponent", {money = money})
     local pick_upper = EntityGetFirstComponent(player, "ItemPickUpperComponent")
     ComponentSetValue2(pick_upper or EntityAddComponent2(player, "ItemPickUpperComponent"), "is_in_npc", false)
     inventory_quick = inventory_quick or pick_upper ~= nil and EntityCreateNew("inventory_quick") or nil
@@ -109,7 +111,7 @@ function OnPlayerSpawned(player)
     add_polymorphed_player(polymorphed_player, ModSettingGet("polymare.extra_health"), money, nil, EntityCreateNew("inventory_full"))
 end
 
-local sprite_xmls = {}
+local xmls = {}
 local polymorph_table_variant = {}
 function OnWorldPreUpdate()
     local player = EntityGetWithTag("polymorphed_player")[1] or EntityGetWithTag("player_unit")[1]
@@ -135,16 +137,32 @@ function OnWorldPreUpdate()
     local sprite = EntityGetFirstComponent(player, "SpriteComponent")
     if controls ~= nil and sprite ~= nil then
         local image_file = ComponentGetValue2(sprite, "image_file")
-        if sprite_xmls[image_file] == nil then
-            sprite_xmls[image_file] = nxml.parse_file(image_file)
+        if xmls[image_file] == nil then
+            xmls[image_file] = nxml.parse_file(image_file)
         end
         local frame = GameGetFrameNum()
 
         local throw = true
-        for animation in sprite_xmls[image_file]:each_of("RectAnimation") do
+        local ai = EntityGetFirstComponentIncludingDisabled(player, "AnimalAIComponent")
+        local attacks = EntityGetComponent(player, "AIAttackComponent") or {}
+        local attack_info = get_attack_info(player, ai, attacks)
+        for animation in xmls[image_file]:each_of("RectAnimation") do
             if animation.attr.name == "throw" then
                 throw = false
                 break
+            end
+            if animation.attr.name == attack_info.animation_name then
+                local throw_release = true
+                for event in animation:each_of("Event") do
+                    if event.attr.name == "throw_release" then
+                        throw_release = false
+                        break
+                    end
+                end
+                if throw_release then
+                    throw = false
+                    break
+                end
             end
         end
         local inventory = EntityGetFirstComponent(player, "Inventory2Component")
@@ -152,8 +170,8 @@ function OnWorldPreUpdate()
             local item = validate(ComponentGetValue2(inventory, "mActiveItem"))
             if item ~= nil then
                 local ability = EntityGetFirstComponentIncludingDisabled(item, "AbilityComponent")
-                if ability ~= nil and ComponentGetValue2(ability, "throw_as_item") and ComponentGetValue2(controls, "mButtonFrameThrow") == frame and throw then
-                    GamePlayAnimation(player, "attack_ranged", 2)
+                if ability ~= nil and ComponentGetValue2(ability, "throw_as_item") and ComponentGetValue2(controls, "mButtonFrameThrow") == frame and throw and attack_info ~= nil then
+                    GamePlayAnimation(player, attack_info.animation_name, 3)
                 end
             end
         end
@@ -162,8 +180,7 @@ function OnWorldPreUpdate()
         local inventory_quick = table.find(EntityGetAllChildren(player), function(child) return EntityGetName(child) == "inventory_quick" end)
         if inventory_quick == nil then
             entity = table.iterate(table.filter(EntityGetInRadius(0, 0, math.huge), function(v)
-                local item = EntityGetFirstComponent(v, "ItemComponent")
-                return item ~= nil and ComponentGetValue2(item, "preferred_inventory") ~= "QUICK" and ComponentGetValue2(item, "auto_pickup")
+                return EntityGetComponent(v, "ItemComponent") ~= nil and EntityGetComponentIncludingDisabled(v, "AbilityComponent") == nil and EntityGetComponent(v, "ItemActionComponent") == nil
             end), is_closer) or 1
         end
         local pick_upper = EntityGetFirstComponent(player, "ItemPickUpperComponent")
@@ -171,8 +188,8 @@ function OnWorldPreUpdate()
             ComponentSetValue2(pick_upper, "only_pick_this_entity", entity)
         end
 
-        local frame_wait
-        for animation in sprite_xmls[image_file]:each_of("RectAnimation") do
+        local frame_wait = 0
+        for animation in xmls[image_file]:each_of("RectAnimation") do
             if animation.attr.name == "attack" then
                 frame_wait = animation.attr.frame_wait
                 break
@@ -182,7 +199,7 @@ function OnWorldPreUpdate()
         local ai = EntityGetFirstComponentIncludingDisabled(player, "AnimalAIComponent")
         if kick ~= nil and ComponentGetValue2(kick, "can_kick") and ComponentGetValue2(controls, "mButtonFrameKick") == frame and ai ~= nil then
             ComponentSetValue2(controls, "mButtonFrameKick", frame + ComponentGetValue2(ai, "attack_melee_action_frame") * frame_wait * 60 - 18)
-            GamePlayAnimation(player, "attack", 2)
+            GamePlayAnimation(player, "attack", 3)
         end
     end
 
@@ -208,7 +225,7 @@ function OnWorldPreUpdate()
     local enemy = table.iterate(table.filter(enemies, function(v)
         return not ModSettingGet("polymare.polymorph_cap") or get_weight(v) <= player_weight
     end), is_closer)
-    if read_input_just(tostring(ModSettingGet("polymare.polymorph_key"))) then
+    if read_input_down(tostring(ModSettingGet("polymare.polymorph_key"))) then
         if enemy == nil then
             enemy = table.iterate(enemies, is_closer)
             if enemy ~= nil then
