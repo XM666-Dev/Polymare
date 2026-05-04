@@ -138,7 +138,8 @@ function OnWorldPreUpdate()
     if controls ~= nil and sprite ~= nil then
         local image_file = ComponentGetValue2(sprite, "image_file")
         if xmls[image_file] == nil then
-            xmls[image_file] = nxml.parse_file(image_file)
+            local success, result = pcall(nxml.parse_file, image_file)
+            xmls[image_file] = success and result or nxml.new_element()
         end
         local frame = GameGetFrameNum()
 
@@ -196,7 +197,6 @@ function OnWorldPreUpdate()
             end
         end
         local kick = EntityGetFirstComponent(player, "KickComponent")
-        local ai = EntityGetFirstComponentIncludingDisabled(player, "AnimalAIComponent")
         if kick ~= nil and ComponentGetValue2(kick, "can_kick") and ComponentGetValue2(controls, "mButtonFrameKick") == frame and ai ~= nil then
             ComponentSetValue2(controls, "mButtonFrameKick", frame + ComponentGetValue2(ai, "attack_melee_action_frame") * frame_wait * 60 - 18)
             GamePlayAnimation(player, "attack", 3)
